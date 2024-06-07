@@ -110,15 +110,15 @@ function AllowBulkUseIndividual(key)
 end
 
 function Card:CanStack()
-	return tablecontains(Stackable, self.ability.set) or tablecontains(StackableIndividual, self.config.center_key)
+	return self.config.center and self.config.center.can_stack or tablecontains(Stackable, self.ability.set) or tablecontains(StackableIndividual, self.config.center_key)
 end
 
 function Card:CanDivide()
-	return tablecontains(Divisible, self.ability.set) or tablecontains(DivisibleIndividual, self.config.center_key)
+	return self.config.center and self.config.center.can_divide or tablecontains(Divisible, self.ability.set) or tablecontains(DivisibleIndividual, self.config.center_key)
 end
 
 function Card:CanBulkUse()
-	return tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
+	return self.config.center and self.config.center.can_bulk_use or tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
 end
 
 function Card:getmaxuse()
@@ -227,33 +227,39 @@ end
 local useconsumeref = Card.use_consumeable
 
 function Card:use_consumeable(area, copier)
-	Incantation.accelerate = true
-	self.cardinuse = true
-	Incantation.consumable_in_use = true
-	for i = 1, (self.ability.qty or 1) do
-		useconsumeref(self,area,copier)
+	local obj = self.config.center
+	if obj.bulk_use and type(obj.bulk_use) == 'function' then
+		obj:bulk_use(self, area, copier, self.ability.qty or 1)
+		return
+	else
+		Incantation.accelerate = true
+		self.cardinuse = true
+		Incantation.consumable_in_use = true
+		for i = 1, (self.ability.qty or 1) do
+			useconsumeref(self,area,copier)
+			G.E_MANAGER:add_event(Event({
+				trigger = 'immediate',
+				delay = 0.1,
+				blockable = true,
+				func = function()
+					self.ability.qty = (self.ability.qty or 1) - 1
+					play_sound('button', self.ability.qty <= 0 and 1 or 0.85, 0.7)
+					return true
+				end
+			}))
+		end
 		G.E_MANAGER:add_event(Event({
-			trigger = 'immediate',
+			trigger = 'after',
 			delay = 0.1,
 			blockable = true,
 			func = function()
-				self.ability.qty = (self.ability.qty or 1) - 1
-				play_sound('button', self.ability.qty <= 0 and 1 or 0.85, 0.7)
+				Incantation.consumable_in_use = false
+				Incantation.accelerate = false
+				self:start_dissolve()
 				return true
 			end
 		}))
 	end
-	G.E_MANAGER:add_event(Event({
-		trigger = 'after',
-		delay = 0.1,
-		blockable = true,
-		func = function()
-			Incantation.consumable_in_use = false
-			Incantation.accelerate = false
-			self:start_dissolve()
-			return true
-		end
-	}))
 end
 
 local startdissolveref = Card.start_dissolve
