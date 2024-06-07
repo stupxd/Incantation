@@ -44,7 +44,8 @@ local Stackable = {
 }
 
 local StackableIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 local Divisible = {
@@ -54,7 +55,8 @@ local Divisible = {
 }
 
 local DivisibleIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 local BulkUsable = {
@@ -62,7 +64,8 @@ local BulkUsable = {
 }
 
 local BulkUsableIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 --Allow mods to add/remove their own card types to the list
@@ -473,7 +476,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 0.5
+						y = 1
 					},
 					bond = 'Strong',
 					parent = self
@@ -511,7 +514,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 1
+						y = 1.5
 					},
 					bond = 'Strong',
 					parent = self
@@ -549,7 +552,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 1.5
+						y = 2
 					},
 					bond = 'Strong',
 					parent = self
@@ -587,7 +590,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 2
+						y = 2.5
 					},
 					bond = 'Strong',
 					parent = self
