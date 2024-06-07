@@ -10,7 +10,7 @@
 --- VERSION: 0.0.1b
 --- LOADER_VERSION_GEQ: 1.0.0
 
-Incantation = {consumable_in_use = false} --will port more things over to this global later, but for now it's going to be mostly empty
+Incantation = {consumable_in_use = false, accelerate = false} --will port more things over to this global later, but for now it's going to be mostly empty
 
 local MaxStack = 9999
 local BulkUseLimit = 100
@@ -227,6 +227,7 @@ end
 local useconsumeref = Card.use_consumeable
 
 function Card:use_consumeable(area, copier)
+	Incantation.accelerate = true
 	self.cardinuse = true
 	Incantation.consumable_in_use = true
 	for i = 1, (self.ability.qty or 1) do
@@ -248,6 +249,7 @@ function Card:use_consumeable(area, copier)
 		blockable = true,
 		func = function()
 			Incantation.consumable_in_use = false
+			Incantation.accelerate = false
 			self:start_dissolve()
 			return true
 		end
