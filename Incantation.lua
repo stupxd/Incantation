@@ -7,7 +7,7 @@
 --- PRIORITY: 0
 --- BADGE_COLOR: 000000
 --- PREFIX: inc
---- VERSION: 0.0.1b
+--- VERSION: 0.0.1c
 --- LOADER_VERSION_GEQ: 1.0.0
 
 Incantation = {consumable_in_use = false, accelerate = false} --will port more things over to this global later, but for now it's going to be mostly empty
@@ -123,32 +123,13 @@ function Card:CanBulkUse()
 end
 
 function Card:getmaxuse()
-	return UseBulkCap and math.min(BulkUseLimit, (self.ability.qty or 1)) or (self.ability.qty or 1)
+	--let modders define their own bulk-use limit in case of concerns with performance
+	return (self.config.center.bulk_use_limit or UseBulkCap) and math.min((self.config.center.bulk_use_limit or BulkUseLimit), (self.ability.qty or 1)) or (self.ability.qty or 1)
 end
 
-function Card:split_half()
-	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.dissolve then
-		local traysize = G.consumeables.config.card_limit
-		local split = copy_card(self)
-		local qty2 = math.floor(self.ability.qty / 2)
-		G.consumeables.config.card_limit = #G.consumeables.cards + 1
-		split.config.ignorestacking = true
-		split:add_to_deck()
-		G.consumeables:emplace(split)
-		split.ability.qty = qty2
-		self.ability.qty = self.ability.qty - qty2
-		G.consumeables.config.card_limit = traysize
-		if qty2 > 1 then
-			split:create_stack_display()
-		end
-		split:set_cost()
-		self:set_cost()
-		play_sound('card1')
-		return split
-	end
-end
-
-function Card:split_custom(amount)
+function Card:split(amount)
+	if not amount then amount = math.floor((self.ability.qty or 1) / 2) end
+	amount = math.max(1, amount)
 	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.dissolve then
 		local traysize = G.consumeables.config.card_limit
 		local split = copy_card(self)
@@ -163,25 +144,6 @@ function Card:split_custom(amount)
 		if qty2 > 1 then
 			split:create_stack_display()
 		end
-		split:set_cost()
-		self:set_cost()
-		play_sound('card1')
-		return split
-	end
-end
-
-function Card:split_one()
-	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.dissolve then
-		local traysize = G.consumeables.config.card_limit
-		local split = copy_card(self)
-		local qty2 = 1
-		G.consumeables.config.card_limit = #G.consumeables.cards + 1
-		split.config.ignorestacking = true
-		split:add_to_deck()
-		G.consumeables:emplace(split)
-		split.ability.qty = qty2
-		self.ability.qty = self.ability.qty - qty2
-		G.consumeables.config.card_limit = traysize
 		split:set_cost()
 		self:set_cost()
 		play_sound('card1')
@@ -340,12 +302,12 @@ end
 
 G.FUNCS.split_half = function(e)
 	local card = e.config.ref_table
-	card:split_half()
+	card:split(math.floor(card.ability.qty / 2))
 end
 
 G.FUNCS.split_one = function(e)
 	local card = e.config.ref_table
-	card:split_one()
+	card:split(1)
 end
 
 G.FUNCS.merge_card = function(e)
