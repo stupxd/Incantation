@@ -12,7 +12,7 @@
 
 Incantation = {consumable_in_use = false} --will port more things over to this global later, but for now it's going to be mostly empty
 
-local MaxStack = 999
+local MaxStack = 9999
 local BulkUseLimit = 100
 local UseStackCap = true
 
@@ -268,7 +268,7 @@ G.FUNCS.use_card = function(e, mute, nosave)
 	if ((card.ability or {}).qty or 1) > useamount then
 		card.highlighted = false
 		card.bulkuse = false
-		local split = card:split_one()
+		local split = card:split_custom(useamount)
 		e.config.ref_table = split
 	end
 	usecardref(e, mute, nosave)
