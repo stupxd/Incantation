@@ -13,8 +13,9 @@
 Incantation = {consumable_in_use = false, accelerate = false} --will port more things over to this global later, but for now it's going to be mostly empty
 
 local MaxStack = 9999
-local BulkUseLimit = 100
-local UseStackCap = true
+local BulkUseLimit = 9999
+local UseStackCap = false
+local UseBulkCap = false
 
 local function deepCopy(obj, seen)
     if type(obj) ~= 'table' then return obj end
@@ -44,8 +45,7 @@ local Stackable = {
 }
 
 local StackableIndividual = {
-	'c_black_hole',
-	'c_cry_white_hole'
+	'c_black_hole'
 }
 
 local Divisible = {
@@ -55,8 +55,7 @@ local Divisible = {
 }
 
 local DivisibleIndividual = {
-	'c_black_hole',
-	'c_cry_white_hole'
+	'c_black_hole'
 }
 
 local BulkUsable = {
@@ -64,8 +63,7 @@ local BulkUsable = {
 }
 
 local BulkUsableIndividual = {
-	'c_black_hole',
-	'c_cry_white_hole'
+	'c_black_hole'
 }
 
 --Allow mods to add/remove their own card types to the list
@@ -125,7 +123,7 @@ function Card:CanBulkUse()
 end
 
 function Card:getmaxuse()
-	return math.min(BulkUseLimit, (self.ability.qty or 1))
+	return UseBulkCap and math.min(BulkUseLimit, (self.ability.qty or 1)) or (self.ability.qty or 1)
 end
 
 function Card:split_half()
@@ -207,7 +205,7 @@ function Card:try_merge()
 					self:start_dissolve()
 					break
 				else
-					local space = MaxStack - (v.ability.qty or 1)
+					local space = (UseStackCap and MaxStack or 2^10000) - (v.ability.qty or 1)
 					v.ability.qty = (v.ability.qty or 1) + math.min((self.ability.qty or 1), space)
 					v:create_stack_display()
 					v:juice_up(0.5, 0.5)
@@ -232,8 +230,11 @@ local useconsumeref = Card.use_consumeable
 function Card:use_consumeable(area, copier)
 	local obj = self.config.center
 	if obj.bulk_use and type(obj.bulk_use) == 'function' then
-		obj:bulk_use(self, area, copier, self.ability.qty or 1)
-		return
+		return obj:bulk_use(self, area, copier, self.ability.qty or 1)
+	elseif self.ability.consumeable.hand_type then
+		update_hand_text({sound = 'button', volume = 0.7, pitch = 0.8, delay = 0.3}, {handname=localize(self.ability.consumeable.hand_type, 'poker_hands'),chips = G.GAME.hands[self.ability.consumeable.hand_type].chips, mult = G.GAME.hands[self.ability.consumeable.hand_type].mult, level=G.GAME.hands[self.ability.consumeable.hand_type].level})
+        level_up_hand(copier or self, self.ability.consumeable.hand_type, nil, self.ability.qty or 1)
+        update_hand_text({sound = 'button', volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = '', level = ''})
 	else
 		Incantation.accelerate = true
 		self.cardinuse = true
