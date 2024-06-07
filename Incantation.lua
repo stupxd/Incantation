@@ -7,8 +7,10 @@
 --- PRIORITY: 0
 --- BADGE_COLOR: 000000
 --- PREFIX: inc
---- VERSION: 0.0.1a
+--- VERSION: 0.0.1b
 --- LOADER_VERSION_GEQ: 1.0.0
+
+Incantation = {consumable_in_use = false} --will port more things over to this global later, but for now it's going to be mostly empty
 
 local MaxStack = 999
 local BulkUseLimit = 100
@@ -226,17 +228,36 @@ local useconsumeref = Card.use_consumeable
 
 function Card:use_consumeable(area, copier)
 	self.cardinuse = true
+	Incantation.consumable_in_use = true
+	for i = 1, (self.ability.qty or 1) do
+		useconsumeref(self,area,copier)
+		G.E_MANAGER:add_event(Event({
+			trigger = 'immediate',
+			delay = 0.1,
+			blockable = true,
+			func = function()
+				self.ability.qty = (self.ability.qty or 1) - 1
+				play_sound('button', self.ability.qty <= 0 and 1 or 0.85, 0.7)
+				return true
+			end
+		}))
+	end
 	G.E_MANAGER:add_event(Event({
-		trigger = 'immediate',
+		trigger = 'after',
 		delay = 0.1,
 		blockable = true,
 		func = function()
-			useconsumeref(self, area, copier)
-			self.ability.qty = (self.ability.qty or 1) - 1
-			play_sound('button', self.ability.qty <= 0 and 1 or 0.85, 0.7)
-			return self.ability.qty <= 0
+			Incantation.consumable_in_use = false
+			self:start_dissolve()
+			return true
 		end
 	}))
+end
+
+local startdissolveref = Card.start_dissolve
+function Card:start_dissolve(a,b,c,d)
+	if self.ability.qty and self.ability.qty > 1 and Incantation.consumable_in_use then return end
+	return startdissolveref(self,a,b,c,d)
 end
 
 local usecardref = G.FUNCS.use_card
