@@ -159,7 +159,7 @@ function Card:try_merge()
 		if not self.edition then self.edition = {} end
 		for k, v in pairs(G.consumeables.cards) do
 			if not v.edition then v.edition = {} end
-			if v ~= self and not v.nomerging and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (not UseStackCap or (v.ability.qty or 1) < MaxStack) then
+			if v ~= self and not v.nomerging and not v.ignorestacking and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (not UseStackCap or (v.ability.qty or 1) < MaxStack) then
 				if not UseStackCap then
 					v.ability.qty = (v.ability.qty or 1) + (self.ability.qty or 1)
 					v:create_stack_display()
