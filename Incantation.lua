@@ -130,10 +130,10 @@ function Card:getmaxuse()
 	return (self.config.center.bulk_use_limit or UseBulkCap) and math.min((self.config.center.bulk_use_limit or BulkUseLimit), (self.ability.qty or 1)) or (self.ability.qty or 1)
 end
 
-function Card:split(amount)
+function Card:split(amount, forced)
 	if not amount then amount = math.floor((self.ability.qty or 1) / 2) end
 	amount = math.max(1, amount)
-	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.ignorestacking then
+	if (self.ability.qty or 0) > 1 and (self:CanDivide() or forced) and not self.ignorestacking then
 		local traysize = G.consumeables.config.card_limit
 		if (self.edition or {}).negative then
 			traysize = traysize + 1
@@ -256,7 +256,7 @@ G.FUNCS.use_card = function(e, mute, nosave)
 	if ((card.ability or {}).qty or 1) > useamount then
 		card.highlighted = false
 		card.bulkuse = false
-		local split = card:split(useamount)
+		local split = card:split(useamount, true)
 		e.config.ref_table = split
 	end
 	usecardref(e, mute, nosave)
