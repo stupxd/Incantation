@@ -45,7 +45,8 @@ local Stackable = {
 }
 
 local StackableIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 local Divisible = {
@@ -55,7 +56,8 @@ local Divisible = {
 }
 
 local DivisibleIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 local BulkUsable = {
@@ -63,7 +65,8 @@ local BulkUsable = {
 }
 
 local BulkUsableIndividual = {
-	'c_black_hole'
+	'c_black_hole',
+	'c_cry_white_hole'
 }
 
 --Allow mods to add/remove their own card types to the list
@@ -396,7 +399,17 @@ function Card:add_to_deck(from_debuff)
 	if G.consumeables then
 		if self:CanStack() then
 			if not self.config.ignorestacking then
-				self:try_merge()
+				G.E_MANAGER:add_event(Event({
+					trigger = 'after',
+					delay = 0.1,
+					blocking = false,
+					func = function()
+						if self and self.area and self.area ~= 'shop' and self.area ~= 'pack_cards' then
+							self:try_merge()
+						end
+						return true
+					end
+				}))
 			end
 			self.config.ignorestacking = nil
 		end
