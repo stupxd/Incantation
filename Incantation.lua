@@ -251,7 +251,7 @@ end
 
 G.FUNCS.can_split_half = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
+	if (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
         e.config.colour = G.C.PURPLE
         e.config.button = 'split_half'
 		e.states.visible = true
@@ -264,7 +264,7 @@ end
 
 G.FUNCS.can_split_one = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
+	if (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
         e.config.colour = G.C.GREEN
         e.config.button = 'split_one'
 		e.states.visible = true
@@ -277,7 +277,7 @@ end
 
 G.FUNCS.can_merge_card = function(e)
 	local card = e.config.ref_table
-	if card:CanStack() and card.highlighted and not self.ignorestacking then
+	if card:CanStack() and card.highlighted and not card.ignorestacking then
         e.config.colour = G.C.BLUE
         e.config.button = 'merge_card'
 		e.states.visible = true
@@ -290,7 +290,7 @@ end
 
 G.FUNCS.can_use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
+	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
         e.config.colour = G.C.DARK_EDITION
         e.config.button = 'use_all'
 		e.states.visible = true
@@ -326,7 +326,7 @@ end
 
 G.FUNCS.disablestackdisplay = function(e)
 	local card = e.config.ref_table
-	e.states.visible = ((card.ability.qty or 1) > 1 and not self.ignorestacking) or card.cardinuse
+	e.states.visible = ((card.ability.qty or 1) > 1 and not card.ignorestacking) or card.cardinuse
 end
 
 function Card:create_stack_display()
