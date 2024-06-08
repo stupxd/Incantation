@@ -7,7 +7,7 @@
 --- PRIORITY: 0
 --- BADGE_COLOR: 000000
 --- PREFIX: inc
---- VERSION: 0.0.1c
+--- VERSION: 0.0.1b
 --- LOADER_VERSION_GEQ: 1.0.0
 
 Incantation = {consumable_in_use = false, accelerate = false} --will port more things over to this global later, but for now it's going to be mostly empty
@@ -111,15 +111,15 @@ function AllowBulkUseIndividual(key)
 end
 
 function Card:CanStack()
-	return self.config.center and self.config.center.can_stack or tablecontains(Stackable, self.ability.set) or tablecontains(StackableIndividual, self.config.center_key)
+	return (self.config.center and self.config.center.can_stack) or tablecontains(Stackable, self.ability.set) or tablecontains(StackableIndividual, self.config.center_key)
 end
 
 function Card:CanDivide()
-	return self.config.center and self.config.center.can_divide or tablecontains(Divisible, self.ability.set) or tablecontains(DivisibleIndividual, self.config.center_key)
+	return (self.config.center and self.config.center.can_divide) or tablecontains(Divisible, self.ability.set) or tablecontains(DivisibleIndividual, self.config.center_key)
 end
 
 function Card:CanBulkUse()
-	return self.config.center and self.config.center.can_bulk_use or tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
+	return (self.config.center and self.config.center.can_bulk_use) or tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
 end
 
 function Card:getmaxuse()
@@ -130,7 +130,7 @@ end
 function Card:split(amount)
 	if not amount then amount = math.floor((self.ability.qty or 1) / 2) end
 	amount = math.max(1, amount)
-	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.dissolve then
+	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.ignorestacking then
 		local traysize = G.consumeables.config.card_limit
 		local split = copy_card(self)
 		local qty2 = math.min(self.ability.qty - 1, amount)
@@ -152,18 +152,18 @@ function Card:split(amount)
 end
 
 function Card:try_merge()
-	if self:CanStack() and not self.nomerging and not self.dissolve then
+	if self:CanStack() and not self.ignorestacking then
 		if not self.edition then self.edition = {} end
 		for k, v in pairs(G.consumeables.cards) do
 			if not v.edition then v.edition = {} end
-			if v ~= self and not v.nomerging and not v.dissolve and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (not UseStackCap or (v.ability.qty or 1) < MaxStack) then
+			if v ~= self and not v.nomerging and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (not UseStackCap or (v.ability.qty or 1) < MaxStack) then
 				if not UseStackCap then
 					v.ability.qty = (v.ability.qty or 1) + (self.ability.qty or 1)
 					v:create_stack_display()
 					v:juice_up(0.5, 0.5)
 					v:set_cost()
 					play_sound('card1')
-					self.nomerging = true
+					self.ignorestacking = true
 					self:start_dissolve()
 					break
 				else
@@ -174,7 +174,7 @@ function Card:try_merge()
 					play_sound('card1')
 					v:set_cost()
 					if (self.ability.qty or 1) - space < 1 then
-						self.nomerging = true
+						self.ignorestacking = true
 						self:start_dissolve()
 						break
 					else
@@ -231,6 +231,7 @@ end
 local startdissolveref = Card.start_dissolve
 function Card:start_dissolve(a,b,c,d)
 	if self.ability.qty and self.ability.qty > 1 and Incantation.consumable_in_use then return end
+	self.ignorestacking = true
 	return startdissolveref(self,a,b,c,d)
 end
 
@@ -242,7 +243,7 @@ G.FUNCS.use_card = function(e, mute, nosave)
 	if ((card.ability or {}).qty or 1) > useamount then
 		card.highlighted = false
 		card.bulkuse = false
-		local split = card:split_custom(useamount)
+		local split = card:split(useamount)
 		e.config.ref_table = split
 	end
 	usecardref(e, mute, nosave)
@@ -250,7 +251,7 @@ end
 
 G.FUNCS.can_split_half = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and not card.dissolve and card.highlighted then
+	if (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
         e.config.colour = G.C.PURPLE
         e.config.button = 'split_half'
 		e.states.visible = true
@@ -263,7 +264,7 @@ end
 
 G.FUNCS.can_split_one = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and not card.dissolve and card.highlighted then
+	if (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
         e.config.colour = G.C.GREEN
         e.config.button = 'split_one'
 		e.states.visible = true
@@ -276,7 +277,7 @@ end
 
 G.FUNCS.can_merge_card = function(e)
 	local card = e.config.ref_table
-	if card:CanStack() and not card.dissolve and card.highlighted then
+	if card:CanStack() and card.highlighted and not self.ignorestacking then
         e.config.colour = G.C.BLUE
         e.config.button = 'merge_card'
 		e.states.visible = true
@@ -289,7 +290,7 @@ end
 
 G.FUNCS.can_use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and not card.dissolve and card.highlighted then
+	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and not self.ignorestacking then
         e.config.colour = G.C.DARK_EDITION
         e.config.button = 'use_all'
 		e.states.visible = true
@@ -317,7 +318,7 @@ end
 
 G.FUNCS.use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and not card.dissolve and card.highlighted then
+	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted then
 		card.bulkuse = true
 		G.FUNCS.use_card(e, false, true)
 	end
@@ -325,11 +326,11 @@ end
 
 G.FUNCS.disablestackdisplay = function(e)
 	local card = e.config.ref_table
-	e.states.visible = (card.ability.qty or 1) > 1 or card.cardinuse
+	e.states.visible = ((card.ability.qty or 1) > 1 and not self.ignorestacking) or card.cardinuse
 end
 
 function Card:create_stack_display()
-	if not self.children.stackdisplay and self:CanStack() and not self.dissolve then
+	if not self.children.stackdisplay and self:CanStack() then
 		self.children.stackdisplay = UIBox {
 			definition = {
 				n = G.UIT.ROOT,
@@ -405,7 +406,7 @@ end
 local hlref = Card.highlight
 
 function Card:highlight(is_highlighted)
-	if self:CanStack() and self.area and self.area.config.type ~= 'shop' and self.area.config.type ~= 'pack_cards' then
+	if self:CanStack() and self.added_to_deck and not self.ignorestacking then
 		if is_highlighted then
 			self.children.splithalfbutton = UIBox {
 				definition = {
@@ -439,7 +440,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 1
+						y = 0.5
 					},
 					bond = 'Strong',
 					parent = self
@@ -477,7 +478,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 1.5
+						y = 1
 					},
 					bond = 'Strong',
 					parent = self
@@ -515,7 +516,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 2
+						y = 1.5
 					},
 					bond = 'Strong',
 					parent = self
@@ -553,7 +554,7 @@ function Card:highlight(is_highlighted)
 					align = 'bmi',
 					offset = {
 						x = 0,
-						y = 2.5
+						y = 2
 					},
 					bond = 'Strong',
 					parent = self
