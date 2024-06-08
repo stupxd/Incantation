@@ -135,6 +135,9 @@ function Card:split(amount)
 	amount = math.max(1, amount)
 	if (self.ability.qty or 0) > 1 and self:CanDivide() and not self.ignorestacking then
 		local traysize = G.consumeables.config.card_limit
+		if (self.edition or {}).negative then
+			traysize = traysize + 1
+		end
 		local split = copy_card(self)
 		local qty2 = math.min(self.ability.qty - 1, amount)
 		G.consumeables.config.card_limit = #G.consumeables.cards + 1
@@ -240,6 +243,13 @@ end
 
 local usecardref = G.FUNCS.use_card
 
+function CanUseStackButtons()
+	if ((G.play and #G.play.cards > 0) or (G.CONTROLLER.locked) or (G.GAME.STOP_USE and G.GAME.STOP_USE > 0)) and G.STATE ~= G.STATES.HAND_PLAYED and G.STATE ~= G.STATES.DRAW_TO_HAND and G.STATE ~= G.STATES.PLAY_TAROT then
+		return false
+	end
+	return true
+end
+
 G.FUNCS.use_card = function(e, mute, nosave)
     local card = e.config.ref_table
 	local useamount = card.bulkuse and card:getmaxuse() or 1
@@ -254,7 +264,7 @@ end
 
 G.FUNCS.can_split_half = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
+	if (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.PURPLE
         e.config.button = 'split_half'
 		e.states.visible = true
@@ -267,7 +277,7 @@ end
 
 G.FUNCS.can_split_one = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
+	if (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.GREEN
         e.config.button = 'split_one'
 		e.states.visible = true
@@ -278,9 +288,19 @@ G.FUNCS.can_split_one = function(e)
 	end
 end
 
+function Card:MergeAvailable()
+	for k, v in pairs(G.consumeables.cards) do
+		if v then 
+			if v ~= self and (v.config or {}).center_key == (self.config or {}).center_key then
+				return true
+			end
+		end
+	end
+end
+
 G.FUNCS.can_merge_card = function(e)
 	local card = e.config.ref_table
-	if card:CanStack() and card.highlighted and not card.ignorestacking then
+	if card:CanStack() and card.highlighted and not card.ignorestacking and CanUseStackButtons() and card:MergeAvailable() then
         e.config.colour = G.C.BLUE
         e.config.button = 'merge_card'
 		e.states.visible = true
@@ -293,7 +313,7 @@ end
 
 G.FUNCS.can_use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and not card.ignorestacking then
+	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.DARK_EDITION
         e.config.button = 'use_all'
 		e.states.visible = true
