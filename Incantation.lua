@@ -150,6 +150,7 @@ function Card:split(amount, forced)
 		if qty2 > 1 then
 			split:create_stack_display()
 		end
+		split.created_from_split = true
 		split:set_cost()
 		self:set_cost()
 		play_sound('card1')
@@ -203,6 +204,30 @@ function Card:use_consumeable(area, copier)
 		update_hand_text({sound = 'button', volume = 0.7, pitch = 0.8, delay = 0.3}, {handname=localize(self.ability.consumeable.hand_type, 'poker_hands'),chips = G.GAME.hands[self.ability.consumeable.hand_type].chips, mult = G.GAME.hands[self.ability.consumeable.hand_type].mult, level=G.GAME.hands[self.ability.consumeable.hand_type].level})
         level_up_hand(copier or self, self.ability.consumeable.hand_type, nil, self.ability.qty or 1)
         update_hand_text({sound = 'button', volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = '', level = ''})
+	elseif self.ability.name == 'Black Hole' then
+        update_hand_text({sound = 'button', volume = 0.7, pitch = 0.8, delay = 0.3}, {handname=localize('k_all_hands'),chips = '...', mult = '...', level=''})
+        G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.2, func = function()
+            play_sound('tarot1')
+            self:juice_up(0.8, 0.5)
+            G.TAROT_INTERRUPT_PULSE = true
+            return true end }))
+        update_hand_text({delay = 0}, {mult = '+', StatusText = true})
+        G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.9, func = function()
+            play_sound('tarot1')
+            self:juice_up(0.8, 0.5)
+            return true end }))
+        update_hand_text({delay = 0}, {chips = '+', StatusText = true})
+        G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.9, func = function()
+            play_sound('tarot1')
+            self:juice_up(0.8, 0.5)
+            G.TAROT_INTERRUPT_PULSE = nil
+            return true end }))
+        update_hand_text({sound = 'button', volume = 0.7, pitch = 0.9, delay = 0}, {level='+' .. (self.ability.qty or 1)})
+        delay(1.3)
+        for k, v in pairs(G.GAME.hands) do
+            level_up_hand(self, k, true, self.ability.qty or 1)
+        end
+        update_hand_text({sound = 'button', volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = '', level = ''})
 	else
 		Incantation.accelerate = true
 		self.cardinuse = true
@@ -227,7 +252,12 @@ function Card:use_consumeable(area, copier)
 			func = function()
 				Incantation.consumable_in_use = false
 				Incantation.accelerate = false
-				self:start_dissolve()
+				if obj.keep_on_use and obj:keep_on_use(self) then
+					self.ignorestacking = false
+					self.ability.qty = 1
+				else
+					self:start_dissolve()
+				end
 				return true
 			end
 		}))
