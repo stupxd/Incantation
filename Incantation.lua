@@ -7,7 +7,7 @@
 --- PRIORITY: 0
 --- BADGE_COLOR: 000000
 --- PREFIX: inc
---- VERSION: 0.0.1b
+--- VERSION: 0.0.2a
 --- LOADER_VERSION_GEQ: 1.0.0
 
 Incantation = {consumable_in_use = false, accelerate = false} --will port more things over to this global later, but for now it's going to be mostly empty
@@ -16,6 +16,9 @@ local MaxStack = 9999
 local BulkUseLimit = 9999
 local UseStackCap = false
 local UseBulkCap = false
+local UnsafeMode = false --if true, enables a second "naive long" bulk-use option
+
+local HardLimit = 9007199254740992
 
 local function deepCopy(obj, seen)
     if type(obj) ~= 'table' then return obj end
@@ -113,6 +116,34 @@ function AllowBulkUseIndividual(key)
 	end
 end
 
+function Card:getQty()
+	return (self.ability or {}).qty or 1
+end
+
+function Card:setQty(quantity)
+	if self:CanStack() then
+		if self.ability then
+			self.ability.qty = math.min(HardLimit, math.floor(quantity))
+			self:create_stack_display()
+			self:set_cost()
+		end
+	end
+end
+
+function Card:addQty(quantity)
+	self:setQty(self:getQty() + math.floor(quantity))
+end
+
+function Card:subQty(quantity, dont_dissolve)
+	if quantity >= self:getQty() and not dont_dissolve then
+		self:setQty(0)
+		self.ignorestacking = true
+		self:start_dissolve()
+	else
+		self:setQty(math.max(0, self:getQty() + math.ceil(quantity)))
+	end
+end
+
 function Card:CanStack()
 	return (self.config.center and self.config.center.can_stack) or tablecontains(Stackable, self.ability.set) or tablecontains(StackableIndividual, self.config.center_key)
 end
@@ -121,17 +152,17 @@ function Card:CanDivide()
 	return (self.config.center and self.config.center.can_divide) or tablecontains(Divisible, self.ability.set) or tablecontains(DivisibleIndividual, self.config.center_key)
 end
 
-function Card:CanBulkUse()
-	return (self.config.center and self.config.center.can_bulk_use) or tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
+function Card:CanBulkUse(ignoreunsafe)
+	return (not ignoreunsafe and UnsafeMode) or (self.config.center and (self.config.center.can_bulk_use or (self.config.center.bulk_use and (type(self.config.center.bulk_use) == 'function')))) or tablecontains(BulkUsable, self.ability.set) or tablecontains(BulkUsableIndividual, self.config.center_key)
 end
 
 function Card:getmaxuse()
 	--let modders define their own bulk-use limit in case of concerns with performance
-	return (self.config.center.bulk_use_limit or UseBulkCap) and math.min((self.config.center.bulk_use_limit or BulkUseLimit), (self.ability.qty or 1)) or (self.ability.qty or 1)
+	return (self.config.center.bulk_use_limit or UseBulkCap) and math.min((self.config.center.bulk_use_limit or BulkUseLimit), (self:getQty())) or (self:getQty())
 end
 
 function Card:split(amount, forced)
-	if not amount then amount = math.floor((self.ability.qty or 1) / 2) end
+	if not amount then amount = math.floor((self:getQty()) / 2) end
 	amount = math.max(1, amount)
 	if (self.ability.qty or 0) > 1 and (self:CanDivide() or forced) and not self.ignorestacking then
 		local traysize = G.consumeables.config.card_limit
@@ -163,31 +194,20 @@ function Card:try_merge()
 		if not self.edition then self.edition = {} end
 		for k, v in pairs(G.consumeables.cards) do
 			if not v.edition then v.edition = {} end
-			if v ~= self and not v.nomerging and not v.ignorestacking and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (not UseStackCap or (v.ability.qty or 1) < MaxStack) then
-				if not UseStackCap then
-					v.ability.qty = (v.ability.qty or 1) + (self.ability.qty or 1)
-					v:create_stack_display()
-					v:juice_up(0.5, 0.5)
-					v:set_cost()
-					play_sound('card1')
+			if v ~= self and not v.nomerging and not v.ignorestacking and v.config.center_key == self.config.center_key and ((self.edition.negative and v.edition.negative) or (not self.edition.negative and not v.edition.negative)) and (v:getQty() < (UseStackCap and MaxStack or HardLimit)) then
+				local space = (UseStackCap and MaxStack or HardLimit) - (v:getQty())
+				v.ability.qty = (v:getQty()) + math.min((self:getQty()), space)
+				v:create_stack_display()
+				v:juice_up(0.5, 0.5)
+				play_sound('card1')
+				v:set_cost()
+				if (self:getQty()) - space < 1 then
 					self.ignorestacking = true
 					self:start_dissolve()
 					break
 				else
-					local space = (UseStackCap and MaxStack or 2^10000) - (v.ability.qty or 1)
-					v.ability.qty = (v.ability.qty or 1) + math.min((self.ability.qty or 1), space)
-					v:create_stack_display()
-					v:juice_up(0.5, 0.5)
-					play_sound('card1')
-					v:set_cost()
-					if (self.ability.qty or 1) - space < 1 then
-						self.ignorestacking = true
-						self:start_dissolve()
-						break
-					else
-						self.ability.qty = (self.ability.qty or 1) - space
-						self:set_cost()
-					end
+					self.ability.qty = (self:getQty()) - space
+					self:set_cost()
 				end
 			end
 		end
@@ -198,13 +218,17 @@ local useconsumeref = Card.use_consumeable
 
 function Card:use_consumeable(area, copier)
 	local obj = self.config.center
-	if obj.bulk_use and type(obj.bulk_use) == 'function' then
-		return obj:bulk_use(self, area, copier, self.ability.qty or 1)
-	elseif self.ability.consumeable.hand_type then
+	print(tprint(self))
+	if not self.naivebulkuse and self.bulkuse and obj.bulk_use and type(obj.bulk_use) == 'function' then
+		return obj:bulk_use(self, area, copier, self:getQty())
+	elseif not self.naivebulkuse and self.ability.consumeable.hand_type then
 		update_hand_text({sound = 'button', volume = 0.7, pitch = 0.8, delay = 0.3}, {handname=localize(self.ability.consumeable.hand_type, 'poker_hands'),chips = G.GAME.hands[self.ability.consumeable.hand_type].chips, mult = G.GAME.hands[self.ability.consumeable.hand_type].mult, level=G.GAME.hands[self.ability.consumeable.hand_type].level})
-        level_up_hand(copier or self, self.ability.consumeable.hand_type, nil, self.ability.qty or 1)
+        level_up_hand(copier or self, self.ability.consumeable.hand_type, nil, self:getQty())
         update_hand_text({sound = 'button', volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = '', level = ''})
-	elseif self.ability.name == 'Black Hole' then
+		if self.ability.set == 'Tarot' or self.ability.set == 'Planet' then
+			G.GAME.last_tarot_planet = obj.key
+		end
+	elseif not self.naivebulkuse and self.ability.name == 'Black Hole' then
         update_hand_text({sound = 'button', volume = 0.7, pitch = 0.8, delay = 0.3}, {handname=localize('k_all_hands'),chips = '...', mult = '...', level=''})
         G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.2, func = function()
             play_sound('tarot1')
@@ -222,24 +246,24 @@ function Card:use_consumeable(area, copier)
             self:juice_up(0.8, 0.5)
             G.TAROT_INTERRUPT_PULSE = nil
             return true end }))
-        update_hand_text({sound = 'button', volume = 0.7, pitch = 0.9, delay = 0}, {level='+' .. (self.ability.qty or 1)})
+        update_hand_text({sound = 'button', volume = 0.7, pitch = 0.9, delay = 0}, {level='+' .. (self:getQty())})
         delay(1.3)
         for k, v in pairs(G.GAME.hands) do
-            level_up_hand(self, k, true, self.ability.qty or 1)
+            level_up_hand(self, k, true, self:getQty())
         end
         update_hand_text({sound = 'button', volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = '', level = ''})
 	else
 		Incantation.accelerate = true
 		self.cardinuse = true
 		Incantation.consumable_in_use = true
-		for i = 1, (self.ability.qty or 1) do
+		for i = 1, (self:getQty()) do
 			useconsumeref(self,area,copier)
 			G.E_MANAGER:add_event(Event({
 				trigger = 'immediate',
 				delay = 0.1,
 				blockable = true,
 				func = function()
-					self.ability.qty = (self.ability.qty or 1) - 1
+					self.ability.qty = (self:getQty()) - 1
 					play_sound('button', self.ability.qty <= 0 and 1 or 0.85, 0.7)
 					return true
 				end
@@ -287,6 +311,10 @@ G.FUNCS.use_card = function(e, mute, nosave)
 		card.highlighted = false
 		card.bulkuse = false
 		local split = card:split(useamount, true)
+		if card.naivebulkuse then
+			split.naivebulkuse = true
+			card.naivebulkuse = false
+		end
 		e.config.ref_table = split
 	end
 	usecardref(e, mute, nosave)
@@ -294,7 +322,7 @@ end
 
 G.FUNCS.can_split_half = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
+	if (card:getQty()) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.PURPLE
         e.config.button = 'split_half'
 		e.states.visible = true
@@ -307,7 +335,7 @@ end
 
 G.FUNCS.can_split_one = function(e)
 	local card = e.config.ref_table
-	if (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
+	if (card:getQty()) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.GREEN
         e.config.button = 'split_one'
 		e.states.visible = true
@@ -343,9 +371,24 @@ end
 
 G.FUNCS.can_use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
+	local obj = card.config.center
+	if card:CanBulkUse() and (obj.key == 'c_black_hole' or (obj.bulk_use and type(obj.bulk_use) == 'function')) and (card:getQty()) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
         e.config.colour = G.C.DARK_EDITION
         e.config.button = 'use_all'
+		e.states.visible = true
+	else
+        e.config.colour = G.C.UI.BACKGROUND_INACTIVE
+        e.config.button = nil
+		e.states.visible = false
+	end
+end
+
+G.FUNCS.can_use_naivebulk = function(e)
+	local card = e.config.ref_table
+	local obj = card.config.center
+	if (card:CanBulkUse() or UnsafeMode) and (UnsafeMode or not obj.bulk_use or type(obj.bulk_use) ~= 'function') and (card:getQty()) > 1 and card.highlighted and CanUseStackButtons() and not card.ignorestacking then
+        e.config.colour = G.C.BLACK
+        e.config.button = 'use_naivebulk'
 		e.states.visible = true
 	else
         e.config.colour = G.C.UI.BACKGROUND_INACTIVE
@@ -371,7 +414,18 @@ end
 
 G.FUNCS.use_all = function(e)
 	local card = e.config.ref_table
-	if card:CanBulkUse() and (card.ability.qty or 1) > 1 and card.highlighted then
+	local obj = card.config.center
+	if card:CanBulkUse() and (not obj.can_use or obj:can_use(card)) and (card:getQty()) > 1 and card.highlighted then
+		card.bulkuse = true
+		G.FUNCS.use_card(e, false, true)
+	end
+end
+
+G.FUNCS.use_naivebulk = function(e)
+	local card = e.config.ref_table
+	local obj = card.config.center
+	if card:CanBulkUse() and (not obj.can_use or obj:can_use(card)) and (card:getQty()) > 1 and card.highlighted and UnsafeMode then
+		card.naivebulkuse = true
 		card.bulkuse = true
 		G.FUNCS.use_card(e, false, true)
 	end
@@ -379,7 +433,7 @@ end
 
 G.FUNCS.disablestackdisplay = function(e)
 	local card = e.config.ref_table
-	e.states.visible = ((card.ability.qty or 1) > 1 and not card.ignorestacking) or card.cardinuse
+	e.states.visible = ((card:getQty()) > 1 and not card.ignorestacking) or card.cardinuse
 end
 
 function Card:create_stack_display()
@@ -606,7 +660,7 @@ function Card:highlight(is_highlighted)
 						{
 							n = G.UIT.T,
 							config = {
-								text = 'BULK USE',
+								text = 'BULK USE' .. (UnsafeMode and ' (NORMAL)' or ''),
 								scale = 0.3,
 								colour = G.C.UI.TEXT_LIGHT
 							}
@@ -623,11 +677,54 @@ function Card:highlight(is_highlighted)
 					parent = self
 				}
 			}
+			if UnsafeMode then
+				self.children.useallnaivebutton = UIBox {
+					definition = {
+						n = G.UIT.ROOT,
+						config = {
+							minh = 0.3,
+							maxh = 0.6,
+							minw = 0.3,
+							maxw = 4,
+							r = 0.08,
+							padding = 0.1,
+							align = 'cm',
+							colour = G.C.BLACK,
+							shadow = true,
+							button = 'use_naivebulk',
+							func = 'can_use_naivebulk',
+							ref_table = self
+						},
+						nodes = {
+							{
+								n = G.UIT.T,
+								config = {
+									text = 'BULK USE (ONE-AT-A-TIME)',
+									scale = 0.3,
+									colour = G.C.RED
+								}
+							}
+						}
+					},
+					config = {
+						align = 'bmi',
+						offset = {
+							x = 0,
+							y = 2.5
+						},
+						bond = 'Strong',
+						parent = self
+					}
+				}
+			end
 		else
 			if self.children.splithalfbutton then self.children.splithalfbutton:remove();self.children.splithalfbutton = nil end
 			if self.children.splitonebutton then self.children.splitonebutton:remove();self.children.splitonebutton = nil end
 			if self.children.mergebutton then self.children.mergebutton:remove();self.children.mergebutton = nil end
 			if self.children.useallbutton then self.children.useallbutton:remove();self.children.useallbutton = nil end
+			if UnsafeMode then
+				if self.children.useallnaivebutton then self.children.useallnaivebutton:remove();self.children.useallnaivebutton = nil end
+			end
 		end
 	end
 	return hlref(self,is_highlighted)
@@ -653,11 +750,11 @@ SMODS.Joker:take_ownership('perkeo', {
 					func = function() 
 						local total, checked, center = 0, 0, nil
 						for i = 1, #G.consumeables.cards do
-							total = total + (G.consumeables.cards[i].ability.qty or 1)
+							total = total + (G.consumeables.cards[i]:getQty())
 						end
 						local poll = pseudorandom(pseudoseed('perkeo'))*total
 						for i = 1, #G.consumeables.cards do
-							checked = checked + (G.consumeables.cards[i].ability.qty or 1)
+							checked = checked + (G.consumeables.cards[i]:getQty())
 							if checked >= poll then
 								center = G.consumeables.cards[i]
 								break
